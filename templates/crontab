@@ -1,0 +1,10 @@
+*/20 * * * *    /root/cronjob.sh save_keppet_rtb_impressions >> /var/log/cronjob.log 2>&1
+10 * * * *      /root/cronjob.sh save_keppet_useragent_impressions >> /var/log/cronjob.log 2>&1
+*/10 * * * *    /root/cronjob.sh scrape_keppet_direct >> /var/log/cronjob.log 2>&1
+40 * * * *      /root/cronjob.sh scrape_prebid_report >> /var/log/cronjob.log 2>&1
+45 * * * *      /root/cronjob.sh scrape_keppet_report >> /var/log/cronjob.log 2>&1
+50 * * * *      /root/cronjob.sh scrape_keppet_incoming_report >> /var/log/cronjob.log 2>&1
+*/20 6,7,8,9,10,12,15 * * * /root/cronjob.sh keppet_scrape_week >> /var/log/cronjob.log 2>&1
+30 3 * * *      /root/cronjob.sh keppet_scrape_month >> /var/log/cronjob.log 2>&1
+0 22 * * *      /root/cronjob.sh prebid_currency_rates >> /var/log/cronjob.log 2>&1
+*/5 * * * *     /root/cronjob.sh create_prebid_dfp_order >> /var/log/cronjob.log 2>&1

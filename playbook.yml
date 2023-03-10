@@ -1,0 +1,230 @@
+---
+
+- hosts: all  
+  become: yes
+  become_user:  root
+  vars:
+    bolddotcom: /etc/apache2/sites-available/www-bold-dk.conf
+    serverstatus: /etc/apache2/sites-available/server-status.conf
+    keppet: /etc/apache2/sites-available/www-keppet-dk.conf
+    mobildotbold: /etc/apache2/sites-available/mobil-bold-dk.conf
+    apachedefault: /etc/apache2/sites-available/000-default.conf
+    bold_timezone: Europe/Copenhagen
+    http_port: 80
+    gituser: '{{ gitUser }}'
+    gitpassword: '{{ gitPwd }}'
+    
+  tasks:
+    - name: Update packages
+      apt: update_cache=yes
+
+    - name: Install list of packages
+      apt: name={{item}} state=installed
+      with_items:
+           - software-properties-common
+           - curl
+           - apt-transport-https
+           - python-pycurl
+
+
+#    - name: Adding gpg key and stable repo to the sources list
+#      apt_key: url=https://packages.sury.org/php/apt.gpg state=present
+#    - apt_repository:
+#      repo: deb https://packages.sury.org/php/ stretch main
+#        state: present
+    - name: Adding gpg key and stable repo to the sources list      
+      shell: wget -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg
+                
+    - name: update repo
+      shell: echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
+                                
+    - name: Update packages after repo update
+      apt: update_cache=yes  
+   
+    - name: Install php packages
+      apt: name={{item}} state=installed
+      with_items:
+           - php5.6
+           - libapache2-mod-php5.6  
+           - php5.6-mysql
+           - php5.6-mcrypt
+           - php5.6-cli
+           - php-geoip
+           - php-common
+           - php5.6-fpm
+           - php5.6-curl
+           - php5.6-common
+           - php5.6-cgi
+           - php5.6-bcmath
+           - php5.6-mbstring
+           - php5.6-intl
+           - php5.6-readline
+           - php5.6-xmlrpc
+           - php5.6-xml
+           - php5.6-soap
+           - php5.6-json
+           - php-memcache
+           - php-mailparse
+           - php-memcached
+           - php5.6-bz2
+           - php5.6-sybase
+           - php5.6-interbase
+           - php-msgpack
+           - php-http
+           - php-pear
+           - php5.6-opcache
+           - php-apcu
+           - php5.6-gd
+           - php5.6-apcu
+           - postfix
+           - php5.6-soap
+           - inkscape
+           - optipng 
+           - php5.6-imagick
+
+    - name: Set php 5.6
+      shell: update-alternatives --set php /usr/bin/php5.6
+    
+    - name: check current timezone
+      shell: cat /etc/timezone
+      register: current_zone
+
+    - name: Set timezone variables
+      copy: content={{bold_timezone}}
+            dest=/etc/timezone
+            owner=root
+            group=root
+            mode=0644
+            backup=yes
+      when: current_zone.stdout != bold_timezone
+      notify:
+       - update timezone
+
+
+ # make sure to updae correct version of apache providing
+    - name: Install apache,chrony  and memcached service
+      apt: name={{item}} state=latest
+      with_items:
+           - apache2
+           - chrony
+
+    - name: Make sure apache service is started
+      service:
+        name: apache2
+        state: started
+
+    - name: Enable service apache2, and not touch the running state
+      service:
+        name: apache2
+        enabled: yes
+    - name: Make sure chrony service is started
+      service:
+        name: chrony
+        state: started
+
+    - name: Enable service chrony service, and not touch the running state
+      service:
+        name: chrony
+        enabled: yes
+
+
+    - name: Ansible create new file with permissions /etc/apache2/sites-available
+      file:
+        path: "{{ item }}"
+        state: touch
+        mode: 0644
+        owner: root
+        group: root
+      with_items:
+           - "{{ mobildotbold }}"
+           - "{{ serverstatus }}"
+           - "{{ bolddotcom }}"
+           - "{{ keppet }}"
+           - "{{ apachedefault }}"
+
+    
+    - name: copy apache config files
+      copy: src={{ item }}.conf dest=/etc/apache2/sites-available/{{ item }}.conf
+      with_items:
+            - mobil-bold-dk
+            - www-bold-dk
+            - www-keppet-com
+            - 000-default
+
+    - name: enable sites
+      shell: a2ensite {{item}}
+      with_items:
+          - mobil-bold-dk
+          - www-bold-dk
+          - www-keppet-com
+          - 000-default
+      notify:
+        - restart apache2
+
+    - name: Creates apache2 directory
+      file: path=/etc/php/5.6/apache2 state=directory
+
+    - name: copying php.ini file
+      copy: src=config/php.ini dest=/etc/php/5.6/apache2/php.ini   
+   
+    - name: copying apache2.conf file
+      copy: src=config/apache2.conf dest=/etc/apache2/apache2.conf
+   
+    - name: enablling cache
+      apache2_module:
+        state: present
+        name: cache
+    - name: enablling include
+      apache2_module:
+        state: present
+        name: include
+    - name: enablling rewrite
+      apache2_module:
+        state: present
+        name: rewrite
+
+    - name: install jq
+      apt: pkg=jq
+
+
+    - name: copying the cronjob shellsnippet file
+      copy:
+        src: config/cronjob.sh
+        dest: /root/
+        owner: root
+        group: root
+        mode: 755
+    - name: copying cronjob files to root file
+      copy:
+        src: templates/crontab
+        dest: /var/spool/cron/crontabs/root
+        owner: root
+        group: root
+        mode: 0600
+        
+    - name: cleaning /var/www folder
+      file: path=/var/www  state=absent
+    
+                  
+    - name: Install git package
+      apt: name=git  state=latest
+
+      
+    - name: git clone application source code 
+      git: 
+        repo: "https://{{ gituser | regex_replace('/','%2F') }}:{{ gitpassword | urlencode | regex_replace('/','%2F') }}@git-codecommit.eu-west-1.amazonaws.com/v1/repos/app-source-repo"
+        dest: /var/www
+        clone: yes
+        update: yes 
+        version: developer
+
+  handlers:
+    - name: update timezone
+      command: dpkg-reconfigure --frontend noninteractive tzdata
+ 
+    - name: restart chrony
+      service: name=chrony state=restarted
+      
+    - name: restart apache2
+      service: name=apache2 state=restarted
+   
